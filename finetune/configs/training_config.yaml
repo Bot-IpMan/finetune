@@ -1,11 +1,57 @@
-# У training_config.yaml
+# training_config.yaml
 training:
+  output_dir: /workspace/models/finetuned
+  num_train_epochs: 3
   per_device_train_batch_size: 1
+  per_device_eval_batch_size: 1
   gradient_accumulation_steps: 8
-  
+  learning_rate: 5e-5
+  weight_decay: 0.0
+  warmup_steps: 0
+  logging_steps: 10
+  save_steps: 100
+  eval_steps: 100
+  evaluation_strategy: steps
+  save_total_limit: 2
+  load_best_model_at_end: true
+  metric_for_best_model: eval_loss
+  greater_is_better: false
+  dataloader_num_workers: 2
+  remove_unused_columns: false
+  optim: adamw_torch
+  fp16: true
+  gradient_checkpointing: false
+  report_to: tensorboard
+
 model:
+  name: Qwen/Qwen2.5-Coder-1.5B-Instruct
+  torch_dtype: float16
+  device_map: auto
+  load_in_8bit: false
   load_in_4bit: true
-  
+
 lora:
   r: 8
   lora_alpha: 16
+  lora_dropout: 0.1
+  bias: none
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+data:
+  train_file: /workspace/data/processed/train_dataset.jsonl
+  eval_file: /workspace/data/processed/eval_dataset.jsonl
+  max_length: 512
+  instruction_template: |
+    Instruction: {instruction}
+    Input: {input}
+    Output: {output}
+
+logging:
+  tensorboard_dir: /workspace/logs/tensorboard

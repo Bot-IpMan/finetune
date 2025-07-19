@@ -9,9 +9,17 @@ import json
 import random
 from pathlib import Path
 from typing import List, Dict, Any
-import markdown
-from bs4 import BeautifulSoup
 import re
+
+try:
+    import markdown
+except ImportError:
+    markdown = None
+
+try:
+    from bs4 import BeautifulSoup
+except ImportError:
+    BeautifulSoup = None
 
 class DataProcessor:
     """Клас для обробки та підготовки даних"""
@@ -311,4 +319,12 @@ def is_palindrome_recursive(s, start=0, end=None):
             print("\n📄 Приклад тренувального зразка:")
             print(f"Instruction: {sample['instruction']}")
             print(f"Input: {sample['input']}")
-            print(f"Output: {sample['output']
+            print(f"Output: {sample['output']}")
+        except Exception as e:
+            print(f"❌ Помилка валідації: {e}")
+
+
+if __name__ == "__main__":
+    processor = DataProcessor(data_dir="finetune/data", output_dir="finetune/data/processed")
+    processor.create_datasets()
+    processor.validate_datasets()

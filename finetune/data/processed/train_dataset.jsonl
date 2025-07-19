@@ -1,0 +1,2 @@
+{"instruction": "Напиши функцію для додавання двох чисел", "input": "Python", "output": "def add(a, b):\n    return a + b"}
+{"instruction": "Створи клас для моніторингу гідропонної системи", "input": "Python", "output": "class Monitor:\n    pass"}

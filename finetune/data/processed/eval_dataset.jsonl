@@ -1,0 +1,1 @@
+{"instruction": "Напиши функцію для множення двох чисел", "input": "Python", "output": "def mul(a, b):\n    return a * b"}

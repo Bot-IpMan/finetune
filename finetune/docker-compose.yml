@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  finetune:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: qwen_finetune
+    volumes:
+      # Монтування директорій проекту
+      - ./data:/workspace/data:rw
+      - ./configs:/workspace/configs:ro
+      - ./scripts:/workspace/scripts:ro
+      - ./models:/workspace/models:rw
+      - ./logs:/workspace/logs:rw
+      - ./.cache:/workspace/.cache:rw
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - PYTHONPATH=/workspace
+      - TRANSFORMERS_CACHE=/workspace/.cache
+      - HF_HOME=/workspace/.cache
+      - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
+      - TOKENIZERS_PARALLELISM=false
+    ports:
+      - "6006:6006"  # TensorBoard
+      - "8888:8888"  # Jupyter (опціонально)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+    
+    # Налаштування для production
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    
+    # Додаткові налаштування безпеки
+    security_opt:
+      - seccomp:unconfined
+    
+    # Назва мережі
+    networks:
+      - finetune_network
+
+networks:
+  finetune_network:
+    driver: bridge

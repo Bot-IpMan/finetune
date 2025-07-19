@@ -6,7 +6,7 @@
 
 ## Швидкий старт
 ```
-docker-compose build
-docker-compose up -d
+docker compose build
+docker compose up -d
 ```
 ...

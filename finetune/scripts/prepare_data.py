@@ -311,4 +311,9 @@ def is_palindrome_recursive(s, start=0, end=None):
             print("\n📄 Приклад тренувального зразка:")
             print(f"Instruction: {sample['instruction']}")
             print(f"Input: {sample['input']}")
-            print(f"Output: {sample['output']
+            print(f"Output: {sample['output']}")
+        except Exception as e:
+            print(f"❌ Помилка валідації даних: {e}")
+            return False
+
+        return True

@@ -1,0 +1,11 @@
+{
+  "total_samples": 8,
+  "train_samples": 6,
+  "eval_samples": 2,
+  "train_ratio": 0.8,
+  "categories": {
+    "other": 5,
+    "hydroponic": 1,
+    "classes": 2
+  }
+}

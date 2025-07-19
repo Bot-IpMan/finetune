@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  finetune:
+    build:
+      context: .
+      dockerfile: Dockerfile.cpu
+    container_name: qwen_finetune_cpu
+    volumes:
+      - ./data:/workspace/data:rw
+      - ./configs:/workspace/configs:ro
+      - ./scripts:/workspace/scripts:ro
+      - ./models:/workspace/models:rw
+      - ./logs:/workspace/logs:rw
+      - ./.cache:/workspace/.cache:rw
+    environment:
+      - PYTHONPATH=/workspace
+      - TRANSFORMERS_CACHE=/workspace/.cache
+      - HF_HOME=/workspace/.cache
+      - TOKENIZERS_PARALLELISM=false
+    ports:
+      - "6006:6006"
+      - "8888:8888"
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    security_opt:
+      - seccomp:unconfined
+    networks:
+      - finetune_network
+
+networks:
+  finetune_network:
+    driver: bridge

@@ -61,7 +61,7 @@ logging:
   tensorboard_dir: "/workspace/logs/tensorboard"
   log_level: "INFO"
 
-# Налаshtування раннього зупинення
+# Налаштування раннього зупинення
 early_stopping:
   enabled: true
   patience: 3

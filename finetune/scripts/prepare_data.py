@@ -311,4 +311,21 @@ def is_palindrome_recursive(s, start=0, end=None):
             print("\n📄 Приклад тренувального зразка:")
             print(f"Instruction: {sample['instruction']}")
             print(f"Input: {sample['input']}")
-            print(f"Output: {sample['output']
+            print(f"Output: {sample['output']}")
+        except Exception as e:
+            print(f"❌ Помилка перевірки: {e}")
+            return False
+
+        print("✅ Датасети успішно перевірено!")
+        return True
+
+
+def main():
+    processor = DataProcessor()
+    processor.create_datasets()
+    processor.validate_datasets()
+
+
+if __name__ == "__main__":
+    main()
+

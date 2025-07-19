@@ -1,0 +1,40 @@
+# Dockerfile for CPU-only training
+FROM python:3.10-slim
+
+# Install basic dependencies
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y \
+    git \
+    wget \
+    curl \
+    vim \
+    htop \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+
+# Copy requirements
+COPY requirements/requirements.txt .
+
+# Install PyTorch CPU version and other deps
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Create directories
+RUN mkdir -p /workspace/data/processed \
+             /workspace/models \
+             /workspace/logs/tensorboard \
+             /workspace/scripts \
+             /workspace/configs \
+             /workspace/.cache
+
+ENV PYTHONPATH=/workspace \
+    TRANSFORMERS_CACHE=/workspace/.cache \
+    HF_HOME=/workspace/.cache
+
+COPY scripts/ /workspace/scripts/
+COPY configs/ /workspace/configs/
+RUN chmod +x /workspace/scripts/*.py
+
+CMD ["bash"]

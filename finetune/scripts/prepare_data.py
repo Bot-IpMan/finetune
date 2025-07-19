@@ -9,8 +9,17 @@ import json
 import random
 from pathlib import Path
 from typing import List, Dict, Any
-import markdown
-from bs4 import BeautifulSoup
+
+try:
+    import markdown
+except ImportError:  # pragma: no cover - optional dependency
+    markdown = None
+
+try:
+    from bs4 import BeautifulSoup
+except ImportError:  # pragma: no cover - optional dependency
+    BeautifulSoup = None
+
 import re
 
 class DataProcessor:
@@ -25,7 +34,11 @@ class DataProcessor:
         """Витягує текст з markdown файлу"""
         with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
-        
+
+        if markdown is None or BeautifulSoup is None:
+            # Якщо бібліотеки відсутні, повертаємо сирий текст
+            return content
+
         # Конвертуємо markdown в HTML, потім в чистий текст
         html = markdown.markdown(content)
         soup = BeautifulSoup(html, 'html.parser')
@@ -311,4 +324,46 @@ def is_palindrome_recursive(s, start=0, end=None):
             print("\n📄 Приклад тренувального зразка:")
             print(f"Instruction: {sample['instruction']}")
             print(f"Input: {sample['input']}")
-            print(f"Output: {sample['output']
+            print(f"Output: {sample['output']}")
+
+        except Exception as e:
+            print(f"❌ Помилка під час валідації: {e}")
+            return False
+
+        return len(train_lines) > 0 and len(eval_lines) > 0
+
+
+def main():
+    """Головна функція для генерації та валідації датасетів"""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Підготовка тренувальних даних")
+    parser.add_argument(
+        "--data_dir",
+        default="/workspace/data",
+        help="Каталог з початковими даними"
+    )
+    parser.add_argument(
+        "--output_dir",
+        default="/workspace/data/processed",
+        help="Каталог для збереження згенерованих датасетів"
+    )
+    parser.add_argument(
+        "--train_ratio",
+        type=float,
+        default=0.8,
+        help="Частка тренувальних зразків"
+    )
+
+    args = parser.parse_args()
+
+    processor = DataProcessor(args.data_dir, args.output_dir)
+    processor.create_datasets(train_ratio=args.train_ratio)
+    if processor.validate_datasets():
+        print("\n🎉 Підготовка даних завершена успішно!")
+    else:
+        print("\n⚠️ Підготовка даних завершена з помилками")
+
+
+if __name__ == "__main__":
+    main()

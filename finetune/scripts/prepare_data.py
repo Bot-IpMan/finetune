@@ -136,10 +136,8 @@ def is_palindrome_recursive(s, start=0, end=None):
     
     if start >= end:
         return True
-    
-    if s[start] != s[end]:
-        return False
-    
+
+
     return is_palindrome_recursive(s, start + 1, end - 1)"""
             }
         ]
@@ -311,4 +309,14 @@ def is_palindrome_recursive(s, start=0, end=None):
             print("\n📄 Приклад тренувального зразка:")
             print(f"Instruction: {sample['instruction']}")
             print(f"Input: {sample['input']}")
-            print(f"Output: {sample['output']
+            print(f"Output: {sample['output']}")
+
+        except Exception as e:
+            print(f"❌ Помилка у форматі даних: {e}")
+            return False
+
+        return True
+if __name__ == '__main__':
+    processor = DataProcessor()
+    processor.create_datasets()
+    processor.validate_datasets()

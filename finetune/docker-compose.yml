@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   finetune:
     build:
@@ -24,13 +22,13 @@ services:
     ports:
       - "6006:6006"  # TensorBoard
       - "8888:8888"  # Jupyter (опціонально)
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+    #deploy:
+    #  resources:
+    #    reservations:
+    #      devices:
+    #        - driver: nvidia
+     #         count: 1
+    #          capabilities: [gpu]
     working_dir: /workspace
     stdin_open: true
     tty: true

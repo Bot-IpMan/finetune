@@ -1,5 +1,5 @@
 # Dockerfile
-FROM nvidia/cuda:11.8-devel-ubuntu20.04
+FROM nvidia/cuda:11.8.0-devel-ubuntu20.04
 
 # Встановлення базових залежностей
 ENV DEBIAN_FRONTEND=noninteractive
@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     vim \
     htop \
+    sudo \
     && rm -rf /var/lib/apt/lists/*
 
 # Створення символічного посилання для python
@@ -22,12 +23,19 @@ RUN python -m pip install --upgrade pip
 # Встановлення PyTorch з CUDA підтримкою
 RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 
-# Копіювання файлу залежностей
+# Встановлення робочої директорії
 WORKDIR /workspace
+
+# Копіювання файлу залежностей
 COPY requirements/requirements.txt .
 
 # Встановлення Python залежностей
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Створення користувача developer з правами sudo
+RUN useradd -m -s /bin/bash developer && \
+    usermod -aG sudo developer && \
+    echo "developer ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 # Створення необхідних директорій
 RUN mkdir -p /workspace/data/processed \
@@ -35,25 +43,30 @@ RUN mkdir -p /workspace/data/processed \
              /workspace/logs/tensorboard \
              /workspace/scripts \
              /workspace/configs \
-             /workspace/.cache
+             /workspace/cache \
+             /home/developer/.cache
 
 # Встановлення змінних оточення
 ENV PYTHONPATH=/workspace
-ENV TRANSFORMERS_CACHE=/workspace/.cache
-ENV HF_HOME=/workspace/.cache
+ENV HF_HOME=/workspace/cache
+ENV TRANSFORMERS_CACHE=/workspace/cache
 ENV CUDA_VISIBLE_DEVICES=0
 
 # Копіювання скриптів та конфігурацій
 COPY scripts/ /workspace/scripts/
 COPY configs/ /workspace/configs/
 
-# Встановлення прав доступу
-RUN chmod +x /workspace/scripts/*.py
+# Встановлення правильних прав доступу
+RUN chown -R developer:developer /workspace && \
+    chown -R developer:developer /home/developer && \
+    chmod -R 755 /workspace && \
+    chmod +x /workspace/scripts/*.py
 
-# Створення користувача (опціонально)
-RUN useradd -m -s /bin/bash developer && \
-    chown -R developer:developer /workspace
+# Переключення на користувача developer
 USER developer
+
+# Встановлення змінних для користувача
+ENV HOME=/home/developer
 
 # Точка входу
 CMD ["bash"]

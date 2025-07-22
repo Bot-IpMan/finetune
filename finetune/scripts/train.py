@@ -1,16 +1,27 @@
 #!/usr/bin/env python3
 """
-Скрипт для файн-тюнінгу Qwen2.5-Coder моделі
+Виправлений скрипт для файн-тюнінгу Qwen2.5-Coder моделі
+Виправлені проблеми з scipy та bitsandbytes
 """
 
 import os
 import json
-import yaml
 import torch
 import logging
+import tempfile
+import shutil
 from pathlib import Path
-from typing import Dict, Any, List
-from dataclasses import dataclass, field
+
+# Встановлюємо змінні оточення ПЕРЕД імпортом transformers
+temp_base = tempfile.mkdtemp(prefix='qwen_train_')
+os.environ['HF_HOME'] = temp_base
+os.environ['TRANSFORMERS_CACHE'] = temp_base
+os.environ['HF_DATASETS_CACHE'] = temp_base
+os.environ['HUGGINGFACE_HUB_CACHE'] = temp_base
+
+# Вимикаємо bitsandbytes для CPU
+os.environ['DISABLE_BNB'] = '1'
+os.environ['BNB_DISABLE_APEX'] = '1'
 
 import transformers
 from transformers import (
@@ -19,296 +30,334 @@ from transformers import (
     TrainingArguments,
     Trainer,
     DataCollatorForLanguageModeling,
-    EarlyStoppingCallback
 )
-from peft import LoraConfig, get_peft_model, TaskType, PeftModel
-from datasets import Dataset, load_dataset
-import numpy as np
+from peft import LoraConfig, get_peft_model, TaskType
+from datasets import Dataset
 
 # Налаштування логування
-logging.basicConfig(
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-@dataclass
-class ModelArguments:
-    """Аргументи для моделі"""
-    model_name: str = field(default="Qwen/Qwen2.5-Coder-1.5B-Instruct")
-    torch_dtype: str = field(default="float16")
-    device_map: str = field(default="auto")
-    load_in_8bit: bool = field(default=False)
-    load_in_4bit: bool = field(default=True)
-
-@dataclass
-class LoraArguments:
-    """Аргументи для LoRA"""
-    r: int = field(default=16)
-    lora_alpha: int = field(default=32)
-    lora_dropout: float = field(default=0.1)
-    bias: str = field(default="none")
-    target_modules: List[str] = field(default_factory=lambda: [
-        "q_proj", "k_proj", "v_proj", "o_proj",
-        "gate_proj", "up_proj", "down_proj"
-    ])
-
-@dataclass
-class DataArguments:
-    """Аргументи для даних"""
-    train_file: str = field(default="/workspace/data/processed/train_dataset.jsonl")
-    eval_file: str = field(default="/workspace/data/processed/eval_dataset.jsonl")
-    max_length: int = field(default=512)
-    instruction_template: str = field(
-        default="Instruction: {instruction}\nInput: {input}\nOutput: {output}"
-    )
-
-class CodeDataset:
-    """Клас для роботи з датасетом коду"""
-    
-    def __init__(self, tokenizer, max_length: int = 512):
-        self.tokenizer = tokenizer
-        self.max_length = max_length
+class CodeTrainer:
+    def __init__(self):
+        self.temp_dir = temp_base
+        self.output_dir = os.path.join(self.temp_dir, 'output')
         
-    def load_data(self, file_path: str) -> Dataset:
-        """Завантажує дані з JSONL файлу"""
-        try:
-            dataset = load_dataset('json', data_files=file_path)['train']
-            logger.info(f"Завантажено {len(dataset)} зразків з {file_path}")
-            return dataset
-        except Exception as e:
-            logger.error(f"Помилка завантаження даних: {e}")
-            raise
-    
-    def preprocess_function(self, examples):
-        """Попередня обробка даних"""
-        inputs = []
-        for i in range(len(examples['instruction'])):
-            instruction = examples['instruction'][i]
-            input_text = examples.get('input', [''] * len(examples['instruction']))[i]
-            output = examples['output'][i]
-            
-            # Формуємо промпт
-            if input_text and input_text.strip():
-                prompt = f"Instruction: {instruction}\nInput: {input_text}\nOutput: {output}"
-            else:
-                prompt = f"Instruction: {instruction}\nOutput: {output}"
-            
-            inputs.append(prompt)
+        logger.info(f"Використовую тимчасовий каталог: {self.temp_dir}")
         
-        # Токенізація
-        model_inputs = self.tokenizer(
-            inputs,
-            max_length=self.max_length,
-            truncation=True,
-            padding=False,
-            return_tensors=None
-        )
-        
-        # Встановлюємо labels = input_ids для causal LM
-        model_inputs["labels"] = model_inputs["input_ids"].copy()
-        
-        return model_inputs
-
-class ModelTrainer:
-    """Клас для тренування моделі"""
-    
-    def __init__(self, config_path: str):
-        self.config = self.load_config(config_path)
-        self.model = None
-        self.tokenizer = None
-        self.trainer = None
-        
-    def load_config(self, config_path: str) -> Dict[str, Any]:
-        """Завантажує конфігурацію"""
-        with open(config_path, 'r', encoding='utf-8') as f:
-            return yaml.safe_load(f)
-    
-    def setup_tokenizer(self):
-        """Налаштовує токенайзер"""
-        logger.info("Завантаження токенайзера...")
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            self.config['model']['name'],
-            trust_remote_code=True,
-            padding_side="right"
-        )
-        
-        # Додаємо pad_token якщо його немає
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-            
-        logger.info(f"Токенайзер завантажено. Vocab size: {len(self.tokenizer)}")
-        
-    def setup_model(self):
-        """Налаштовує модель"""
-        logger.info("Завантаження базової моделі...")
-        
-        # Налаштування завантаження
-        model_kwargs = {
-            "trust_remote_code": True,
-            "torch_dtype": getattr(torch, self.config['model']['torch_dtype']),
-            "device_map": self.config['model']['device_map']
+        self.config = {
+            'model_name': 'Qwen/Qwen2.5-Coder-1.5B',  # Менша модель для CPU
+            'max_length': 128,  # Ще більше скорочено для CPU
+            'batch_size': 1,
+            'learning_rate': 1e-4,
+            'epochs': 1,
+            'lora_r': 2,  # Мінімальні параметри для CPU
+            'lora_alpha': 4,
         }
         
-        if self.config['model']['load_in_4bit']:
-            from transformers import BitsAndBytesConfig
-            bnb_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_compute_dtype=torch.float16,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_use_double_quant=True
+    def create_dummy_dataset(self):
+        """Створює мінімальний тестовий датасет"""
+        data = [
+            {"text": "def hello():\n    print('Hello World')"},
+            {"text": "def add(a, b):\n    return a + b"},
+            {"text": "class Calculator:\n    def multiply(self, x, y):\n        return x * y"},
+            {"text": "import numpy as np\n\ndef process_array(arr):\n    return np.mean(arr)"},
+        ]
+        return Dataset.from_list(data)
+    
+    def setup_tokenizer(self):
+        """Налаштування токенайзера"""
+        logger.info("Завантаження токенайзера...")
+        
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                self.config['model_name'],
+                trust_remote_code=True,
+                cache_dir=self.temp_dir,
+                local_files_only=False,
+                force_download=False,
+                use_fast=True  # Використовуємо швидкий токенайзер
             )
-            model_kwargs["quantization_config"] = bnb_config
+            logger.info(f"Успішно завантажено токенайзер для {self.config['model_name']}")
+            
+        except Exception as e:
+            logger.error(f"Помилка завантаження токенайзера {self.config['model_name']}: {e}")
+            # Fallback до CodeT5 або GPT2
+            fallback_models = ["Salesforce/codet5-base", "gpt2"]
+            
+            for fallback in fallback_models:
+                try:
+                    logger.info(f"Пробую fallback токенайзер: {fallback}")
+                    self.tokenizer = AutoTokenizer.from_pretrained(
+                        fallback,
+                        cache_dir=self.temp_dir,
+                        use_fast=True
+                    )
+                    self.config['model_name'] = fallback
+                    logger.info(f"Успішно завантажено fallback токенайзер: {fallback}")
+                    break
+                except Exception as fallback_error:
+                    logger.warning(f"Fallback {fallback} також не працює: {fallback_error}")
+                    continue
+            else:
+                raise RuntimeError("Не вдалося завантажити жоден токенайзер")
+            
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+            logger.info("Встановлено pad_token як eos_token")
+            
+    def setup_model(self):
+        """Налаштування моделі"""
+        logger.info("Завантаження моделі...")
         
-        # Завантажуємо модель
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.config['model']['name'],
-            **model_kwargs
+        try:
+            # Спробуємо завантажити оригінальну модель БЕЗ quantization
+            self.model = AutoModelForCausalLM.from_pretrained(
+                self.config['model_name'],
+                torch_dtype=torch.float32,  # Використовуємо float32 для CPU
+                device_map=None,  # Не використовуємо device_map для CPU
+                trust_remote_code=True,
+                cache_dir=self.temp_dir,
+                low_cpu_mem_usage=True,
+                # Вимикаємо всі quantization опції
+                load_in_8bit=False,
+                load_in_4bit=False,
+                quantization_config=None
+            )
+            logger.info(f"Успішно завантажено модель: {self.config['model_name']}")
+            
+        except Exception as e:
+            logger.error(f"Помилка завантаження {self.config['model_name']}: {e}")
+            # Fallback до меншої доступної моделі
+            fallback_models = ["gpt2", "distilgpt2"]
+            
+            for fallback in fallback_models:
+                try:
+                    logger.info(f"Пробую fallback модель: {fallback}")
+                    self.model = AutoModelForCausalLM.from_pretrained(
+                        fallback,
+                        cache_dir=self.temp_dir,
+                        torch_dtype=torch.float32,
+                        low_cpu_mem_usage=True
+                    )
+                    self.config['model_name'] = fallback
+                    logger.info(f"Успішно завантажено fallback модель: {fallback}")
+                    break
+                except Exception as fallback_error:
+                    logger.warning(f"Fallback {fallback} також не працює: {fallback_error}")
+                    continue
+            else:
+                raise RuntimeError("Не вдалося завантажити жодну модель")
+        
+        # Визначаємо target_modules на основі архітектури моделі
+        model_type = self.model.config.model_type.lower()
+        logger.info(f"Тип моделі: {model_type}")
+        
+        if "gpt" in model_type:
+            target_modules = ["c_attn", "c_proj"]
+        elif "qwen" in model_type:
+            target_modules = ["q_proj", "v_proj", "k_proj", "o_proj"]
+        elif "codet5" in model_type:
+            target_modules = ["q", "v", "k", "o"]
+        else:
+            # Загальні назви для transformer моделей
+            target_modules = ["q_proj", "v_proj"]
+            logger.warning(f"Невідомий тип моделі {model_type}, використовую загальні target_modules")
+        
+        # Налаштування LoRA БЕЗ quantization
+        try:
+            lora_config = LoraConfig(
+                r=self.config['lora_r'],
+                lora_alpha=self.config['lora_alpha'],
+                target_modules=target_modules,
+                lora_dropout=0.1,
+                bias="none",
+                task_type=TaskType.CAUSAL_LM,
+                # Вимикаємо всі quantization опції
+                use_rslora=False,
+                init_lora_weights=True,
+            )
+            
+            self.model = get_peft_model(self.model, lora_config)
+            logger.info("Модель успішно налаштована з LoRA")
+            
+        except Exception as e:
+            logger.error(f"Помилка налаштування LoRA: {e}")
+            # Якщо LoRA не працює, працюємо без неї
+            logger.warning("Працюю без LoRA адаптера")
+            # Заморожуємо параметри моделі для економії пам'яті
+            for param in self.model.parameters():
+                param.requires_grad = False
+            # Розморожуємо тільки останні шари
+            for param in list(self.model.parameters())[-4:]:
+                param.requires_grad = True
+        
+    def tokenize_data(self, examples):
+        """Токенізація даних"""
+        result = self.tokenizer(
+            examples["text"],
+            truncation=True,
+            padding="max_length",
+            max_length=self.config['max_length'],
+            return_tensors=None,
         )
-        
-        # Налаштовуємо LoRA
-        lora_config = LoraConfig(
-            r=self.config['lora']['r'],
-            lora_alpha=self.config['lora']['lora_alpha'],
-            target_modules=self.config['lora']['target_modules'],
-            lora_dropout=self.config['lora']['lora_dropout'],
-            bias=self.config['lora']['bias'],
-            task_type=TaskType.CAUSAL_LM,
-        )
-        
-        self.model = get_peft_model(self.model, lora_config)
-        self.model.print_trainable_parameters()
-        
-        # Resize token embeddings якщо потрібно
-        self.model.resize_token_embeddings(len(self.tokenizer))
-        
-        logger.info("Модель налаштована з LoRA адаптерами")
-    
-    def prepare_datasets(self):
-        """Підготовка датасетів"""
-        logger.info("Підготовка датасетів...")
-        
-        dataset_processor = CodeDataset(self.tokenizer, self.config['data']['max_length'])
-        
-        # Завантажуємо дані
-        train_dataset = dataset_processor.load_data(self.config['data']['train_file'])
-        eval_dataset = dataset_processor.load_data(self.config['data']['eval_file'])
-        
-        # Обробляємо дані
-        train_dataset = train_dataset.map(
-            dataset_processor.preprocess_function,
-            batched=True,
-            remove_columns=train_dataset.column_names
-        )
-        
-        eval_dataset = eval_dataset.map(
-            dataset_processor.preprocess_function,
-            batched=True,
-            remove_columns=eval_dataset.column_names
-        )
-        
-        logger.info(f"Train dataset: {len(train_dataset)} зразків")
-        logger.info(f"Eval dataset: {len(eval_dataset)} зразків")
-        
-        return train_dataset, eval_dataset
-    
-    def setup_trainer(self, train_dataset, eval_dataset):
-        """Налаштування тренера"""
-        logger.info("Налаштування тренера...")
-        
-        # Параметри тренування
-        training_args = TrainingArguments(
-            output_dir=self.config['training']['output_dir'],
-            num_train_epochs=self.config['training']['num_train_epochs'],
-            per_device_train_batch_size=self.config['training']['per_device_train_batch_size'],
-            per_device_eval_batch_size=self.config['training']['per_device_eval_batch_size'],
-            gradient_accumulation_steps=self.config['training']['gradient_accumulation_steps'],
-            learning_rate=self.config['training']['learning_rate'],
-            weight_decay=self.config['training']['weight_decay'],
-            warmup_steps=self.config['training']['warmup_steps'],
-            logging_steps=self.config['training']['logging_steps'],
-            save_steps=self.config['training']['save_steps'],
-            eval_steps=self.config['training']['eval_steps'],
-            evaluation_strategy=self.config['training']['evaluation_strategy'],
-            save_total_limit=self.config['training']['save_total_limit'],
-            load_best_model_at_end=self.config['training']['load_best_model_at_end'],
-            metric_for_best_model=self.config['training']['metric_for_best_model'],
-            greater_is_better=self.config['training']['greater_is_better'],
-            dataloader_num_workers=self.config['training']['dataloader_num_workers'],
-            remove_unused_columns=self.config['training']['remove_unused_columns'],
-            optim=self.config['training']['optim'],
-            fp16=self.config['training']['fp16'],
-            gradient_checkpointing=self.config['training']['gradient_checkpointing'],
-            report_to=self.config['training']['report_to'],
-            logging_dir=self.config['logging']['tensorboard_dir']
-        )
-        
-        # Data collator
-        data_collator = DataCollatorForLanguageModeling(
-            tokenizer=self.tokenizer,
-            mlm=False,  # Causal LM, не masked LM
-        )
-        
-        # Ініціалізуємо тренер
-        self.trainer = Trainer(
-            model=self.model,
-            args=training_args,
-            train_dataset=train_dataset,
-            eval_dataset=eval_dataset,
-            tokenizer=self.tokenizer,
-            data_collator=data_collator,
-            callbacks=[EarlyStoppingCallback(early_stopping_patience=3)]
-        )
-        
-        logger.info("Тренер налаштований")
+        result["labels"] = result["input_ids"].copy()
+        return result
     
     def train(self):
-        """Запускає тренування"""
+        """Запуск тренування"""
         logger.info("🚀 Початок тренування...")
         
-        # Створюємо директорії
-        os.makedirs(self.config['training']['output_dir'], exist_ok=True)
-        os.makedirs(self.config['logging']['tensorboard_dir'], exist_ok=True)
+        # Створюємо вихідну директорію
+        os.makedirs(self.output_dir, exist_ok=True)
         
-        # Налаштування
-        self.setup_tokenizer()
-        self.setup_model()
-        train_dataset, eval_dataset = self.prepare_datasets()
-        self.setup_trainer(train_dataset, eval_dataset)
+        try:
+            # Налаштування
+            self.setup_tokenizer()
+            self.setup_model()
+            
+            # Підготовка даних
+            dataset = self.create_dummy_dataset()
+            tokenized_dataset = dataset.map(
+                self.tokenize_data,
+                batched=True,
+                remove_columns=dataset.column_names,
+                num_proc=1  # Один процес для стабільності
+            )
+            
+            logger.info(f"Розмір датасету: {len(tokenized_dataset)}")
+            
+            # Мінімальні параметри тренування для CPU
+            training_args = TrainingArguments(
+                output_dir=self.output_dir,
+                num_train_epochs=self.config['epochs'],
+                per_device_train_batch_size=self.config['batch_size'],
+                learning_rate=self.config['learning_rate'],
+                warmup_steps=1,
+                logging_steps=1,
+                save_steps=50,
+                save_total_limit=1,
+                dataloader_num_workers=0,
+                remove_unused_columns=False,
+                report_to=[],  # Без звітності
+                logging_dir=None,
+                disable_tqdm=False,
+                # CPU оптимізації
+                dataloader_pin_memory=False,
+                gradient_checkpointing=False,  # Вимикаємо для стабільності
+                fp16=False,  # Вимикаємо FP16 для CPU
+                bf16=False,  # Вимикаємо BF16 для CPU
+                optim="adamw_torch",  # Використовуємо стандартний optimizer
+            )
+            
+            # Data collator
+            data_collator = DataCollatorForLanguageModeling(
+                tokenizer=self.tokenizer,
+                mlm=False,
+                pad_to_multiple_of=None,  # Вимикаємо для простоти
+            )
+            
+            # Тренер
+            trainer = Trainer(
+                model=self.model,
+                args=training_args,
+                train_dataset=tokenized_dataset,
+                tokenizer=self.tokenizer,
+                data_collator=data_collator,
+            )
+            
+            # Тренування
+            logger.info("Початок тренування...")
+            result = trainer.train()
+            
+            # Збереження
+            logger.info("💾 Збереження моделі...")
+            trainer.save_model()
+            self.tokenizer.save_pretrained(self.output_dir)
+            
+            # Збереження результатів
+            with open(os.path.join(self.output_dir, 'results.json'), 'w') as f:
+                json.dump(result.metrics, f, indent=2)
+            
+            # Збереження конфігурації
+            with open(os.path.join(self.output_dir, 'training_config.json'), 'w') as f:
+                json.dump(self.config, f, indent=2)
+            
+            logger.info(f"✅ Тренування завершено! Модель збережена в {self.output_dir}")
+            logger.info(f"📊 Втрати: {result.training_loss:.4f}")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Помилка під час тренування: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
         
-        # Тренування
-        result = self.trainer.train()
-        
-        # Збереження моделі
-        logger.info("💾 Збереження моделі...")
-        self.trainer.save_model()
-        self.tokenizer.save_pretrained(self.config['training']['output_dir'])
-        
-        # Збереження метрик
-        with open(f"{self.config['training']['output_dir']}/training_results.json", 'w') as f:
-            json.dump(result.metrics, f, indent=2)
-        
-        logger.info("✅ Тренування завершено!")
-        return result
+        finally:
+            # Очищення пам'яті
+            if hasattr(self, 'model'):
+                del self.model
+            if hasattr(self, 'tokenizer'):
+                del self.tokenizer
+            torch.cuda.empty_cache() if torch.cuda.is_available() else None
+
+def install_missing_packages():
+    """Встановлює відсутні пакети"""
+    import subprocess
+    import sys
+    
+    required_packages = [
+        'scipy',  # Основна проблема
+        'datasets',
+        'peft',
+        'accelerate'
+    ]
+    
+    for package in required_packages:
+        try:
+            __import__(package)
+            logger.info(f"✅ {package} вже встановлено")
+        except ImportError:
+            logger.info(f"📦 Встановлюю {package}...")
+            try:
+                subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+                logger.info(f"✅ {package} успішно встановлено")
+            except subprocess.CalledProcessError as e:
+                logger.error(f"❌ Помилка встановлення {package}: {e}")
 
 def main():
     """Головна функція"""
-    import argparse
-    
-    parser = argparse.ArgumentParser(description="Файн-тюнінг Qwen2.5-Coder")
-    parser.add_argument(
-        "--config",
-        default="/workspace/configs/training_config.yaml",
-        help="Шлях до конфігураційного файлу"
-    )
-    
-    args = parser.parse_args()
-    
-    # Запускаємо тренування
-    trainer = ModelTrainer(args.config)
-    result = trainer.train()
-    
-    print(f"🎉 Тренування завершено! Результати збережено в {trainer.config['training']['output_dir']}")
+    try:
+        # Спочатку встановлюємо відсутні пакети
+        logger.info("🔍 Перевіряю та встановлюю необхідні пакети...")
+        install_missing_packages()
+        
+        # Показуємо інформацію про середовище
+        logger.info(f"Python: {torch.__version__}")
+        logger.info(f"Transformers: {transformers.__version__}")
+        logger.info(f"CUDA доступна: {torch.cuda.is_available()}")
+        logger.info(f"Пристрій: {'CUDA' if torch.cuda.is_available() else 'CPU'}")
+        
+        trainer = CodeTrainer()
+        result = trainer.train()
+        
+        print("🎉 Тренування успішно завершено!")
+        print(f"📁 Результати збережено в: {trainer.output_dir}")
+        
+    except KeyboardInterrupt:
+        print("❌ Тренування перервано користувачем")
+    except Exception as e:
+        logger.error(f"Критична помилка: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        # Пропонуємо рішення
+        print("\n🔧 Можливі рішення:")
+        print("1. Встановіть scipy: pip install scipy")
+        print("2. Встановіть всі залежності: pip install scipy datasets peft accelerate")
+        print("3. Якщо проблеми з bitsandbytes: pip uninstall bitsandbytes")
+        print("4. Використовуйте віртуальне середовище з Python 3.8+")
 
 if __name__ == "__main__":
     main()

@@ -9,6 +9,8 @@ services:
       - model_output:/app/model_output
     environment:
       - PYTHONUNBUFFERED=1
+      - HF_HUB_DISABLE_XET=1
+      - GIT_LFS_SKIP_SMUDGE=1
     # Train the model on the included sample data.  After training the container
     # exits allowing dependent services to start.  You can override this
     # command when running compose if you wish to customise the training.

@@ -7,6 +7,8 @@ services:
     volumes:
       - ./data:/app/data
       - model_output:/app/model_output
+    ports:
+      - "8000:8000"
     environment:
       - PYTHONUNBUFFERED=1
     # Train the model on the included sample data.  After training the container
@@ -16,10 +18,8 @@ services:
     # fine‑tune the model on the provided sample dataset.  Modify or override
     # these arguments to point at your own training data.
     command:
-      - python
-      - train.py
       - --base_model_name
-      - Qwen/Qwen1.5-7B
+      - Qwen/Qwen1.5-0.5B
       - --train_file
       - data/train.jsonl
       - --eval_file
@@ -40,12 +40,12 @@ services:
     environment:
       # Disable authentication for ease of use in local setups
       - WEBUI_AUTH=false
+      - OLLAMA_BASE_URL=http://finetune:8000
     volumes:
       - openwebui_data:/data
     depends_on:
-      # Open WebUI depends only on finetune.  The LLM server should be started
-      # manually outside of Docker due to network restrictions when installing
-      # dependencies.  See README for instructions.
+      # Open WebUI waits for the training container which will also launch
+      # the inference server after training completes.
       - finetune
 
 volumes:

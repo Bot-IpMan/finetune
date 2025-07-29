@@ -33,28 +33,17 @@ minimal OpenAI‑compatible API server.
 
     ```sh
     python train.py \
-      --base_model_name Qwen/Qwen1.5-7B \
+      --base_model_name Qwen/Qwen1.5-0.5B \
       --urls https://en.wikipedia.org/wiki/Artificial_intelligence,https://en.wikipedia.org/wiki/Machine_learning \
       --output_dir model_output \
       --use_lora \
       --num_epochs 1
     ```
 
-3.  Запустіть API‑сервер вручну (поза Docker)
-
-    ```sh
-    # Перед запуском переконайтесь, що у вашому середовищі встановлено torch,
-    # transformers, peft, fastapi та uvicorn.
-    MODEL_PATH=model_output python server/api_server.py
-    ```
-
-    Через відсутність доступу до Інтернету під час збірки Docker‑образів
-    встановити ці залежності в окремому контейнері неможливо, тому сервер
-    потрібно запускати у тій системі, де вони вже є.
-
-4.  Відкрийте [Open WebUI](http://localhost:8080), перейдіть до Admin → Connections,
-    створіть новий зв'язок та у полі URL вкажіть `http://localhost:8000/v1`.
-    Після збереження оберіть модель у меню та почніть спілкування.
+3.  Запустіть `docker compose up` і дочекайтесь завершення навчання. Після
+    цього у тому ж контейнері автоматично стартує API‑сервер на порту 8000.
+    Open WebUI вже налаштовано використовувати цей сервер, тож модель
+    з'явиться в інтерфейсі без додаткових дій.
 
 ## Підтримка офлайн/онлайн режимів
 
@@ -78,15 +67,14 @@ minimal OpenAI‑compatible API server.
 
 ## Docker Deployment
 
-Файл `docker-compose.yml` створює два сервіси: `finetune` для навчання
-та `openwebui` для веб‑інтерфейсу. Контейнер із API‑сервером
-довелося прибрати, оскільки в процесі збірки відсутнє інтернет‑з'єднання
-і неможливо встановити потрібні бібліотеки. Після запуску
-`docker compose up` модель буде натренована, а Open WebUI стане
-доступним за адресою `http://localhost:8080`.  Для обслуговування
-натренованої моделі запустіть `server/api_server.py` вручну, як
-описано в розділі «Quick Start», і підключіть його у веб‑інтерфейсі через
-налаштування Connections.
+Файл `docker-compose.yml` тепер запускає два сервіси: `finetune`, що
+спочатку навчає модель, а потім автоматично підіймає API‑сервер, та
+`openwebui` для веб‑інтерфейсу. Після виконання `docker compose up`
+модель буде натренована й одразу доступна в Open WebUI за адресою
+`http://localhost:8080`. Немає потреби запускати сервер вручну – він
+працює всередині контейнера `finetune` на порту 8000 і
+попередньо зареєстрований у веб‑інтерфейсі через змінну середовища
+`OLLAMA_BASE_URL`.
 
 ## Citation
 

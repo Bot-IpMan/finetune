@@ -14,5 +14,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the code
 COPY . .
 
-# Default command; user can override in docker-compose
-CMD ["python", "train.py", "--help"]
+# Default entrypoint runs training then starts the inference server.
+# Training arguments can be supplied via `command` in docker-compose which will
+# be forwarded to the script.
+ENTRYPOINT ["/app/scripts/train_and_serve.sh"]
+CMD []

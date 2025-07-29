@@ -19,7 +19,7 @@ services:
     # these arguments to point at your own training data.
     command:
       - --base_model_name
-      - Qwen/Qwen1.5-7B
+      - Qwen/Qwen1.5-0.5B
       - --train_file
       - data/train.jsonl
       - --eval_file

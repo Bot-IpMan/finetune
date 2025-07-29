@@ -33,7 +33,7 @@ minimal OpenAI‑compatible API server.
 
     ```sh
     python train.py \
-      --base_model_name Qwen/Qwen1.5-7B \
+      --base_model_name Qwen/Qwen1.5-0.5B \
       --urls https://en.wikipedia.org/wiki/Artificial_intelligence,https://en.wikipedia.org/wiki/Machine_learning \
       --output_dir model_output \
       --use_lora \

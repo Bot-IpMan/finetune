@@ -311,11 +311,18 @@ def main():
             bnb_4bit_compute_dtype=torch.bfloat16,
         )
 
+    device_map = "auto"
+    # When no GPU is available, using device_map="auto" can leave parameters on
+    # the "meta" device which later causes `model.to(device)` to fail.  In that
+    # case load the entire model on CPU instead.
+    if not torch.cuda.is_available():
+        device_map = {"": "cpu"}
+
     try:
         model = AutoModelForCausalLM.from_pretrained(
             base_model_source,
             quantization_config=quantization_config,
-            device_map="auto",
+            device_map=device_map,
             trust_remote_code=True,
         )
     except Exception as exc:

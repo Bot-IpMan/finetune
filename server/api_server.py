@@ -4,7 +4,7 @@ Simple OpenAI‑compatible API server for serving a fine‑tuned model.
 This server loads a base model and optionally a LoRA adapter from disk and exposes
 a `/v1/chat/completions` endpoint compatible with OpenAI's Chat API.  It is
 intended to be used with Open WebUI which allows connecting to arbitrary
-OpenAI‑compatible backends【362441291072753†L54-L131】.
+OpenAI‑compatible backends.
 
 Environment variables:
 

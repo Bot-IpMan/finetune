@@ -1,0 +1,53 @@
+## Compose specification version is omitted to use the latest syntax.
+
+services:
+  finetune:
+    build:
+      context: .
+    volumes:
+      - ./data:/app/data
+      - model_output:/app/model_output
+    environment:
+      - PYTHONUNBUFFERED=1
+    # Train the model on the included sample data.  After training the container
+    # exits allowing dependent services to start.  You can override this
+    # command when running compose if you wish to customise the training.
+    # Use list form for command to avoid shell parsing issues.  This will
+    # fine‑tune the model on the provided sample dataset.  Modify or override
+    # these arguments to point at your own training data.
+    command:
+      - python
+      - train.py
+      - --base_model_name
+      - Qwen/Qwen1.5-7B
+      - --train_file
+      - data/train.jsonl
+      - --eval_file
+      - data/eval.jsonl
+      - --output_dir
+      - /app/model_output
+      - --use_lora
+      - --num_epochs
+      - "1"
+      - --per_device_batch_size
+      - "1"
+
+
+  openwebui:
+    image: ghcr.io/open-webui/open-webui:main
+    ports:
+      - "8080:8080"
+    environment:
+      # Disable authentication for ease of use in local setups
+      - WEBUI_AUTH=false
+    volumes:
+      - openwebui_data:/data
+    depends_on:
+      # Open WebUI depends only on finetune.  The LLM server should be started
+      # manually outside of Docker due to network restrictions when installing
+      # dependencies.  See README for instructions.
+      - finetune
+
+volumes:
+  model_output:
+  openwebui_data:

@@ -5,8 +5,8 @@
 model:
   name: "Qwen/Qwen2.5-Coder-1.5B-Instruct"
   torch_dtype: "float16"
-  device_map: "auto"
-  load_in_4bit: true
+  device_map: "cpu"
+  load_in_4bit: false
   load_in_8bit: false
 
 # Налаштування LoRA

@@ -147,7 +147,8 @@ class ModelTrainer:
         model_kwargs = {
             "trust_remote_code": True,
             "torch_dtype": getattr(torch, self.config['model']['torch_dtype']),
-            "device_map": self.config['model']['device_map']
+            "device_map": self.config['model']['device_map'],
+            "low_cpu_mem_usage": True,
         }
         
         if self.config['model']['load_in_4bit']:

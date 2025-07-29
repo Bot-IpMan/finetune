@@ -315,8 +315,9 @@ def main():
         model = AutoModelForCausalLM.from_pretrained(
             base_model_source,
             quantization_config=quantization_config,
-            device_map="auto",
+            device_map=None,
             trust_remote_code=True,
+            low_cpu_mem_usage=False,
         )
     except Exception as exc:
         print(f"Error loading base model '{base_model_source}': {exc}\n"
@@ -373,7 +374,7 @@ def main():
         lr_scheduler_type="cosine",
         logging_steps=10,
         save_strategy="epoch",
-        fp16=not args.use_4bit,
+        fp16=not args.use_4bit and torch.cuda.is_available(),
         bf16=False,
         report_to="none",
     )

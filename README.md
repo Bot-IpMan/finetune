@@ -91,7 +91,7 @@ minimal OpenAI‑compatible API server.
 ## Citation
 
 The inference server is compatible with any client that speaks the
-OpenAI Chat API as described in the official Open WebUI docs
-【362441291072753†L54-L131】.  Training code uses the `Trainer` class from
-HuggingFace Transformers and applies the chat template provided by the
-tokenizer to assemble multi‑turn conversations【523432065786204†L294-L311】.
+OpenAI Chat API as described in the official Open WebUI docs.
+Training code uses the `Trainer` class from HuggingFace Transformers and
+applies the chat template provided by the tokenizer to assemble
+multi‑turn conversations.

@@ -7,6 +7,8 @@ services:
     volumes:
       - ./data:/app/data
       - model_output:/app/model_output
+      # Mount the locally downloaded models into the container.  See README for details
+      - /mnt/sdb/data/ai/models/qwen1_5_7b:/app/local_models/qwen1_5_7b:ro
     environment:
       - PYTHONUNBUFFERED=1
     # Train the model on the included sample data.  After training the container
@@ -14,12 +16,14 @@ services:
     # command when running compose if you wish to customise the training.
     # Use list form for command to avoid shell parsing issues.  This will
     # fine‑tune the model on the provided sample dataset.  Modify or override
-    # these arguments to point at your own training data.
+    # these arguments to point at your own training data.  When running offline
+    # you must supply --model_path pointing at a directory inside the container
+    # containing the pretrained model and pass --offline to disable network downloads.
     command:
       - python
       - train.py
-      - --base_model_name
-      - Qwen/Qwen1.5-7B
+      - --model_path
+      - /app/local_models/qwen1_5_7b
       - --train_file
       - data/train.jsonl
       - --eval_file
@@ -31,7 +35,7 @@ services:
       - "1"
       - --per_device_batch_size
       - "1"
-
+      - --offline
 
   openwebui:
     image: ghcr.io/open-webui/open-webui:main

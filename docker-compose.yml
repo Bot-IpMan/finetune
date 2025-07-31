@@ -37,6 +37,20 @@ services:
       - "1"
       - --offline
 
+  api:
+    build:
+      context: ./server
+    volumes:
+      - model_output:/app/model_output
+      - /mnt/sdb/data/ai/models/qwen1_5_7b:/app/local_models/qwen1_5_7b:ro
+    environment:
+      - MODEL_PATH=/app/model_output
+      - BASE_MODEL_NAME=/app/local_models/qwen1_5_7b
+    ports:
+      - "8000:8000"
+    depends_on:
+      - finetune
+
   openwebui:
     image: ghcr.io/open-webui/open-webui:main
     ports:
@@ -47,10 +61,7 @@ services:
     volumes:
       - openwebui_data:/data
     depends_on:
-      # Open WebUI depends only on finetune.  The LLM server should be started
-      # manually outside of Docker due to network restrictions when installing
-      # dependencies.  See README for instructions.
-      - finetune
+      - api
 
 volumes:
   model_output:

@@ -35,7 +35,7 @@ minimal OpenAI‑compatible API server.
     python train.py \
       --base_model_name Qwen/Qwen1.5-7B \
       --urls https://en.wikipedia.org/wiki/Artificial_intelligence,https://en.wikipedia.org/wiki/Machine_learning \
-      --output_dir model_output \
+      --output_dir /mnt/sdb/data/ai/models/model_output \
       --use_lora \
       --num_epochs 1
     ```
@@ -45,7 +45,7 @@ minimal OpenAI‑compatible API server.
     ```sh
     # Перед запуском переконайтесь, що у вашому середовищі встановлено torch,
     # transformers, peft, fastapi та uvicorn.
-    MODEL_PATH=model_output python server/api_server.py
+    python server/api_server.py
     ```
 
     Через відсутність доступу до Інтернету під час збірки Docker‑образів
@@ -87,6 +87,11 @@ minimal OpenAI‑compatible API server.
 натренованої моделі запустіть `server/api_server.py` вручну, як
 описано в розділі «Quick Start», і підключіть його у веб‑інтерфейсі через
 налаштування Connections.
+За замовчуванням вага моделі зберігається у каталозі
+`/mnt/sdb/data/ai/models/model_output` на вашому сервері завдяки
+прямому мапінгу цієї папки в `docker-compose.yml`. Саме з цієї папки
+`api_server.py` також завантажує модель, якщо не вказати інший шлях
+через змінну середовища `MODEL_PATH`.
 
 ## Citation
 

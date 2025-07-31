@@ -6,7 +6,7 @@ services:
       context: .
     volumes:
       - ./data:/app/data
-      - model_output:/app/model_output
+      - /mnt/sdb/data/ai/models/model_output:/app/model_output
       # Mount the locally downloaded models into the container.  See README for details
       - /mnt/sdb/data/ai/models/qwen1_5_7b:/app/local_models/qwen1_5_7b:ro
     environment:
@@ -53,5 +53,4 @@ services:
       - finetune
 
 volumes:
-  model_output:
   openwebui_data:

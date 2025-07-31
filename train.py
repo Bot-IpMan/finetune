@@ -106,7 +106,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="model_output",
+        default="/mnt/sdb/data/ai/models/model_output",
         help="Directory to save the fine‑tuned model.",
     )
     parser.add_argument(

@@ -33,7 +33,9 @@ from peft import PeftModel
 app = FastAPI()
 
 # Read configuration from environment
-MODEL_PATH = os.environ.get("MODEL_PATH", "./model_output")
+MODEL_PATH = os.environ.get(
+    "MODEL_PATH", "/mnt/sdb/data/ai/models/model_output"
+)
 BASE_MODEL_NAME = os.environ.get("BASE_MODEL_NAME", None)
 
 
